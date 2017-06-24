@@ -1,0 +1,18 @@
+LIBRARY libboblight
+EXPORTS
+  boblight_addpixel
+  boblight_addpixelxy
+  boblight_connect
+  boblight_destroy
+  boblight_geterror
+  boblight_getlightname
+  boblight_getnrlights
+  boblight_getnroptions
+  boblight_getoption
+  boblight_getoptiondescript
+  boblight_init
+  boblight_ping
+  boblight_sendrgb
+  boblight_setoption
+  boblight_setpriority
+  boblight_setscanrange
