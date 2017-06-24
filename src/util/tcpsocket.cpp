@@ -19,14 +19,24 @@
 #include "inclstdint.h"
 
 #include <stdio.h>
+#if defined(_MSC_VER)
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#include<WinSock2.h>
+#include <WS2tcpip.h>
+#include <Mstcpip.h>
+#define close(a) closesocket(a)
+#else
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <iostream> //debug
-#include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
+#endif
+
+#include <iostream> //debug
+#include <string.h>
+
+#include <fcntl.h>
 
 #include "tcpsocket.h"
 #include "misc.h"
@@ -111,11 +121,25 @@ void CTcpSocket::Close()
 
 int CTcpSocket::SetNonBlock(bool nonblock)
 {
+#if defined(_MSC_VER)
   //non-blocking socket, because we work with select
+  u_long iMode = 0;
+  if (nonblock)
+	iMode = 1;
+  else
+    iMode = 0;
+  
+  if (ioctlsocket(m_sock, FIONBIO, &iMode) != NO_ERROR)
+  {
+    m_error = "F_SETFL " + GetErrnoStr();
+    return FAIL;
+  }
+
+#else
   int flags = fcntl(m_sock, F_GETFL);
   if (flags == -1)
   {
-    m_error = "F_GETFL " + GetErrno();
+    m_error = "F_GETFL " + GetErrnoStr();
     return FAIL;
   }
 
@@ -123,12 +147,13 @@ int CTcpSocket::SetNonBlock(bool nonblock)
     flags |= O_NONBLOCK;
   else
     flags &= ~O_NONBLOCK;
-  
+
   if (fcntl(m_sock, F_SETFL, flags) == -1)
   {
-    m_error = "F_SETFL " + GetErrno();
+    m_error = "F_SETFL " + GetErrnoStr();
     return FAIL;
   }
+#endif
 
   return SUCCESS;
 }
@@ -140,9 +165,13 @@ int CTcpSocket::SetSockOptions()
 
   //disable nagle algorithm
   int flag = 1;
+#if defined(_MSC_VER)
+  if (setsockopt(m_sock, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag)) == -1)
+#else
   if (setsockopt(m_sock, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag)) == -1)
+#endif
   {
-    m_error = "TCP_NODELAY " + GetErrno();
+    m_error = "TCP_NODELAY " + GetErrnoStr();
     return FAIL;
   }
 
@@ -152,13 +181,13 @@ int CTcpSocket::SetSockOptions()
 int CTcpSocket::SetKeepalive()
 {
 #if defined(SO_KEEPALIVE) && defined(TCP_KEEPCNT) && defined(TCP_KEEPIDLE) && defined(TCP_KEEPINTVL)
-
+   
   int flag = 1;
-
+   
   //turn keepalive on
   if (setsockopt(m_sock, SOL_SOCKET, SO_KEEPALIVE, &flag, sizeof(flag)) == -1)
   {
-    m_error = "SO_KEEPALIVE " + GetErrno();
+    m_error = "SO_KEEPALIVE " + GetErrnoStr();
     return FAIL;
   }
 
@@ -166,7 +195,7 @@ int CTcpSocket::SetKeepalive()
   flag = 2;
   if (setsockopt(m_sock, IPPROTO_TCP, TCP_KEEPCNT, &flag, sizeof(flag)) == -1)
   {
-    m_error = "TCP_KEEPCNT " + GetErrno();
+    m_error = "TCP_KEEPCNT " + GetErrnoStr();
     return FAIL;
   }
 
@@ -174,7 +203,7 @@ int CTcpSocket::SetKeepalive()
   flag = 20;
   if (setsockopt(m_sock, IPPROTO_TCP, TCP_KEEPIDLE, &flag, sizeof(flag)) == -1)
   {
-    m_error = "TCP_KEEPIDLE " + GetErrno();
+    m_error = "TCP_KEEPIDLE " + GetErrnoStr();
     return FAIL;
   }
 
@@ -182,15 +211,28 @@ int CTcpSocket::SetKeepalive()
   flag = 20;
   if (setsockopt(m_sock, IPPROTO_TCP, TCP_KEEPINTVL, &flag, sizeof(flag)) == -1)
   {
-    m_error = "TCP_KEEPINTVL " + GetErrno();
+    m_error = "TCP_KEEPINTVL " + GetErrnoStr();
     return FAIL;
   }
+#elif defined(_MSC_VER)
+	struct tcp_keepalive alive;
+	DWORD dwBytesRet = 0;
+	alive.onoff = TRUE;
+	alive.keepalivetime = 20000;
+	alive.keepaliveinterval = 20000;
 
+	if (WSAIoctl(m_sock, SIO_KEEPALIVE_VALS, &alive, sizeof(alive),
+		NULL, 0, &dwBytesRet, NULL, NULL) == SOCKET_ERROR)
+	{
+		m_error = "WSAIotcl(SIO_KEEPALIVE_VALS) failed; %d\n" + GetErrnoStr();
+		return FAIL;
+	}
 #else
 
-#warning keepalive support not compiled in
+	#warning keepalive support not compiled in
 
 #endif
+
 
   return SUCCESS;
 }
@@ -227,22 +269,26 @@ int CTcpSocket::WaitForSocket(bool write, std::string timeoutstr)
   }
   else if (returnv == -1) //select had an error
   {
-    m_error = "select() " + GetErrno();
+    m_error = "select() " + GetErrnoStr();
     return FAIL;
   }
 
   //check if the socket had any errors, connection refused is a common one
   int sockstate, sockstatelen = sizeof(sockstate);
+#if defined(_MSC_VER)
+  returnv = getsockopt(m_sock, SOL_SOCKET, SO_ERROR, (char*)&sockstate, reinterpret_cast<socklen_t*>(&sockstatelen));
+#else
   returnv = getsockopt(m_sock, SOL_SOCKET, SO_ERROR, &sockstate, reinterpret_cast<socklen_t*>(&sockstatelen));
+#endif
   
   if (returnv == -1) //getsockopt had an error
   {
-    m_error = "getsockopt() " + GetErrno();
+    m_error = "getsockopt() " + GetErrnoStr();
     return FAIL;
   }
   else if (sockstate) //socket had an error
   {
-    m_error = "SO_ERROR " + m_address + ":" + ToString(m_port) + " " + GetErrno(sockstate);
+    m_error = "SO_ERROR " + m_address + ":" + ToString(m_port) + " " + GetErrnoStr(sockstate);
     return FAIL;
   }
 
@@ -263,7 +309,7 @@ int CTcpClientSocket::Open(std::string address, int port, int usectimeout /*= -1
 
   if (m_sock == -1) //can't make socket
   {
-    m_error = "socket() " + GetErrno();
+    m_error = "socket() " + GetErrnoStr();
     return FAIL;
   }
 
@@ -282,16 +328,20 @@ int CTcpClientSocket::Open(std::string address, int port, int usectimeout /*= -1
   struct hostent *host = gethostbyname(address.c_str());
   if (!host) //can't find host
   {
-    m_error = "gethostbyname() " + address + ":" + ToString(m_port) + " " + GetErrno();
+    m_error = "gethostbyname() " + address + ":" + ToString(m_port) + " " + GetErrnoStr();
     return FAIL;
   }
+#if defined(_MSC_VER)
+  server.sin_addr.s_addr = *reinterpret_cast<ULONG*>(host->h_addr);
+#else
   server.sin_addr.s_addr = *reinterpret_cast<in_addr_t*>(host->h_addr);
+#endif
 
   if (connect(m_sock, reinterpret_cast<struct sockaddr*>(&server), sizeof(server)) < 0)
   {
-    if (errno != EINPROGRESS) //because of the non blocking socket, this means we're still connecting
+    if (!SocketInProgress()) //because of the non blocking socket, this means we're still connecting
     {
-      m_error = "connect() " + address + ":" + ToString(port) + " " + GetErrno();
+      m_error = "connect() " + address + ":" + ToString(port) + " " + GetErrnoStr();
       return FAIL;
     }
   }
@@ -309,7 +359,11 @@ int CTcpClientSocket::Open(std::string address, int port, int usectimeout /*= -1
 
 int CTcpClientSocket::Read(CTcpData& data)
 {
+#if defined(_MSC_VER)
+  char buff[1000];
+#else
   uint8_t buff[1000];
+#endif
   
   if (m_sock == -1)
   {
@@ -329,13 +383,13 @@ int CTcpClientSocket::Read(CTcpData& data)
   {
     int size = recv(m_sock, buff, sizeof(buff), 0);
 
-    if (errno == EAGAIN && size == -1) //we're done here, no more data, the call to WaitForSocket made sure there was at least some data to read
+    if (SocketTryAgain() && size == -1) //we're done here, no more data, the call to WaitForSocket made sure there was at least some data to read
     {
       return SUCCESS;
     }    
     else if (size == -1) //socket had an error
     {
-      m_error = "recv() " + m_address + ":" + ToString(m_port) + " " + GetErrno();
+      m_error = "recv() " + m_address + ":" + ToString(m_port) + " " + GetErrnoStr();
       return FAIL;
     }
     else if (size == 0 && data.GetSize() == 0) //socket closed and no data received
@@ -347,8 +401,11 @@ int CTcpClientSocket::Read(CTcpData& data)
     {
       return SUCCESS;
     }
-
+#if defined(_MSC_VER)
+    data.SetData((uint8_t*)buff, size, true); //append the data
+#else
     data.SetData(buff, size, true); //append the data
+#endif
   }
 
   return SUCCESS;
@@ -378,7 +435,7 @@ int CTcpClientSocket::Write(CTcpData& data)
     
     if (size == -1)
     {
-      m_error = "send() " + m_address + ":" + ToString(m_port) + " " + GetErrno();
+      m_error = "send() " + m_address + ":" + ToString(m_port) + " " + GetErrnoStr();
       return FAIL;
     }
 
@@ -419,11 +476,14 @@ int CTcpServerSocket::Open(std::string address, int port, int usectimeout)
 
   if (m_sock == -1)
   {
-    m_error = "socket() " + m_address + ":" + ToString(m_port) + " " + GetErrno();
+    m_error = "socket() " + m_address + ":" + ToString(m_port) + " " + GetErrnoStr();
     return FAIL;
   }
-
+#if defined(_MSC_VER)
+  char opt = 1;
+#else
   int opt = 1;
+#endif
   setsockopt(m_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
   
   //bind the socket
@@ -439,21 +499,25 @@ int CTcpServerSocket::Open(std::string address, int port, int usectimeout)
     struct hostent *host = gethostbyname(address.c_str());
     if (host == NULL)
     {
-      m_error = "gethostbyname() " + m_address + ":" + ToString(m_port) + " " + GetErrno();
+      m_error = "gethostbyname() " + m_address + ":" + ToString(m_port) + " " + GetErrnoStr();
       return FAIL;
     }
+#if defined(_MSC_VER)
+    bindaddr.sin_addr.s_addr = *reinterpret_cast<ULONG*>(host->h_addr);
+#else
     bindaddr.sin_addr.s_addr = *reinterpret_cast<in_addr_t*>(host->h_addr);
+#endif
   }
 
   if (bind(m_sock, reinterpret_cast<struct sockaddr*>(&bindaddr), sizeof(bindaddr)) < 0)
   {
-    m_error = "bind() " + m_address + ":" + ToString(m_port) + " " + GetErrno();
+    m_error = "bind() " + m_address + ":" + ToString(m_port) + " " + GetErrnoStr();
     return FAIL;
   }
 
   if (listen(m_sock, SOMAXCONN) < 0)
   {
-    m_error = "listen() " + m_address + ":" + ToString(m_port) + " " + GetErrno();
+    m_error = "listen() " + m_address + ":" + ToString(m_port) + " " + GetErrnoStr();
     return FAIL;
   }
 
@@ -483,7 +547,7 @@ int CTcpServerSocket::Accept(CTcpClientSocket& socket)
   int sock = accept(m_sock, reinterpret_cast<struct sockaddr*>(&client), &clientlen);
   if (sock < 0)
   {
-    m_error = "accept() " + GetErrno();
+    m_error = "accept() " + GetErrnoStr();
     return FAIL;
   }
 
