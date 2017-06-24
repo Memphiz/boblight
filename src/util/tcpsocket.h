@@ -20,7 +20,9 @@
 #define TCP
 
 #include <string>
+#if !defined(_MSC_VER)
 #include <netinet/in.h>
+#endif
 #include <vector>
 
 #define FAIL    0
