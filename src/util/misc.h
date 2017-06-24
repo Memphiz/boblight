@@ -30,6 +30,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#if defined(_MSC_VER)
+#include <WinSock2.h>
+#endif
 
 void PrintError(const std::string& error);
 bool GetWord(std::string& data, std::string& word);
@@ -45,12 +48,48 @@ inline std::string ToString(Value value)
   return data;
 }
 
-inline std::string GetErrno()
+inline int GetErrno()
 {
-  return strerror(errno);
+#if defined(_MSC_VER)
+	return WSAGetLastError();
+#else
+	return errno;
+#endif
 }
 
-inline std::string GetErrno(int err)
+inline std::string GetErrnoStr()
+{
+#if defined(_MSC_VER)
+    char *s = NULL;
+	FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL, GetErrno(),
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		(LPSTR)&s, 0, NULL);
+	return s;
+#else
+  return strerror(GetErrno());
+#endif
+}
+
+inline bool SocketInProgress()
+{
+#if defined(_MSC_VER)
+	return GetErrno() == WSAEWOULDBLOCK;
+#else
+	return GetErrno() == EINPROGRESS;
+#endif
+}
+
+inline bool SocketTryAgain()
+{
+#if defined(_MSC_VER)
+	return GetErrno() == WSAEWOULDBLOCK;
+#else
+	return GetErrno() == EAGAIN;
+#endif
+}
+
+inline std::string GetErrnoStr(int err)
 {
   return strerror(err);
 }
