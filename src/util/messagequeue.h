@@ -38,7 +38,7 @@ class CMessageQueue
 {
   public:
     int      GetNrMessages() { return m_messages.size();}
-    CMessage GetMessage();
+    CMessage GetMessageBob();
     void     AddData(char* data, int size);
     void     AddData(std::string data);
 

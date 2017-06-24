@@ -24,7 +24,7 @@
 using namespace std;
 
 //return the oldest message, which is at the front of the queue
-CMessage CMessageQueue::GetMessage()
+CMessage CMessageQueue::GetMessageBob()
 {
   CMessage message;
   if (m_messages.empty())

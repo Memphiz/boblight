@@ -292,7 +292,7 @@ int CBoblight::Connect(const char* address, int port, int usectimeout)
   if (!ReadDataToQueue())
     return 0;
 
-  message = m_messagequeue.GetMessage();
+  message = m_messagequeue.GetMessageBob();
   if (!ParseWord(message, "hello"))
   {
     m_error = m_address + ":" + ToString(m_port) + " sent gibberish";
@@ -306,7 +306,7 @@ int CBoblight::Connect(const char* address, int port, int usectimeout)
   if (!ReadDataToQueue())
     return 0;
 
-  message = m_messagequeue.GetMessage();
+  message = m_messagequeue.GetMessageBob();
   
   if (!ParseWord(message, "version") || !GetWord(message.message, word))
   {
@@ -329,7 +329,7 @@ int CBoblight::Connect(const char* address, int port, int usectimeout)
   if (!ReadDataToQueue())
     return 0;
 
-  message = m_messagequeue.GetMessage();
+  message = m_messagequeue.GetMessageBob();
   if (!ParseLights(message))
   {
     m_error = m_address + ":" + ToString(m_port) + " sent gibberish";
@@ -460,7 +460,7 @@ bool CBoblight::ParseLights(CMessage& message)
         return false;
     }
 
-    message = m_messagequeue.GetMessage();
+    message = m_messagequeue.GetMessageBob();
 
     //first word sent is "light, second one is the name
     if (!ParseWord(message, "light") || !GetWord(message.message, light.m_name))
@@ -604,7 +604,7 @@ int CBoblight::Ping(int* outputused, bool send)
   if (!ReadDataToQueue())
     return 0;
 
-  CMessage message = m_messagequeue.GetMessage();
+  CMessage message = m_messagequeue.GetMessageBob();
 
   if (!GetWord(message.message, word) || word != "ping")
   {
